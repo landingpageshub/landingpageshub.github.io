@@ -351,9 +351,9 @@ footer{text-align:center;padding:26px 0;color:var(--muted);font-size:14px;font-f
     <div class="sub-h">🎥 ಪೋಷಕರ ಮಾತುಗಳು <span class="tag">VIDEO</span></div>
     <p class="sub-p">ಪ್ಲೇ ಒತ್ತಿ — ಪೋಷಕರು ತಮ್ಮ ಮಾತುಗಳಲ್ಲೇ ಹೇಳುತ್ತಾರೆ</p>
     <div class="vids">
-        <div class="vcard"><span class="vlabel">❤️ Parent 1</span><video src="https://files.leadconnectorhq.com/file/6a6485619eb8e1b1cc5e793f/whatsapp-video-2026-07-25-at-3-03-00-pm.mp4#t=0.5" preload="metadata" playsinline controls></video><button class="vplay" aria-label="Play parent video 1"><span class="pb"></span>▶ ಪೋಷಕರ ಮಾತು ಕೇಳಿ</button></div>
-        <div class="vcard"><span class="vlabel">❤️ Parent 2</span><video src="https://files.leadconnectorhq.com/file/6adef9fd36aa4a07e8d7b260/whatsapp-video-2026-10-26-at-11-32-29-am.mp4#t=0.5" preload="metadata" playsinline controls></video><button class="vplay" aria-label="Play parent video 2"><span class="pb"></span>▶ ಪೋಷಕರ ಮಾತು ಕೇಳಿ</button></div>
-        <div class="vcard"><span class="vlabel">❤️ Parent 3</span><video src="https://files.leadconnectorhq.com/file/6ae69c5fce53a65ab2d95c93/whatsapp-video-2026-11-01-at-7-25-00-am.mp4#t=0.5" preload="metadata" playsinline controls></video><button class="vplay" aria-label="Play parent video 3"><span class="pb"></span>▶ ಪೋಷಕರ ಮಾತು ಕೇಳಿ</button></div>
+        <div class="vcard"><span class="vlabel">❤️ Parent 1</span><video src="https://files.leadconnectorhq.com/file/6a6485619eb8e1b1cc5e793f/whatsapp-video-2026-07-25-at-3-03-00-pm.mp4#t=0.5" preload="metadata" playsinline></video><button class="vplay" aria-label="Play parent video 1"><span class="pb"></span>▶ ಪೋಷಕರ ಮಾತು ಕೇಳಿ</button></div>
+        <div class="vcard"><span class="vlabel">❤️ Parent 2</span><video src="https://files.leadconnectorhq.com/file/6adef9fd36aa4a07e8d7b260/whatsapp-video-2026-10-26-at-11-32-29-am.mp4#t=0.5" preload="metadata" playsinline></video><button class="vplay" aria-label="Play parent video 2"><span class="pb"></span>▶ ಪೋಷಕರ ಮಾತು ಕೇಳಿ</button></div>
+        <div class="vcard"><span class="vlabel">❤️ Parent 3</span><video src="https://files.leadconnectorhq.com/file/6ae69c5fce53a65ab2d95c93/whatsapp-video-2026-11-01-at-7-25-00-am.mp4#t=0.5" preload="metadata" playsinline></video><button class="vplay" aria-label="Play parent video 3"><span class="pb"></span>▶ ಪೋಷಕರ ಮಾತು ಕೇಳಿ</button></div>
     </div>
     <p class="swipe">👉 ಸ್ವೈಪ್ ಮಾಡಿ, ಇನ್ನಷ್ಟು ನೋಡಿ</p>
 
@@ -536,7 +536,7 @@ document.getElementById('form').addEventListener('submit',async e=>{
 const vids=[...document.querySelectorAll('.vcard video')];
 document.querySelectorAll('.vcard').forEach(card=>{
   const v=card.querySelector('video');
-  card.querySelector('.vplay').addEventListener('click',()=>{v.play().catch(()=>{});});
+  card.querySelector('.vplay').addEventListener('click',()=>{v.controls=true;v.play().catch(()=>{});});
   v.addEventListener('play',()=>{card.classList.add('playing');vids.forEach(o=>{if(o!==v)o.pause()});if(window.fbq)fbq('trackCustom','PlayTestimonial')});
   v.addEventListener('ended',()=>card.classList.remove('playing'));
 });
