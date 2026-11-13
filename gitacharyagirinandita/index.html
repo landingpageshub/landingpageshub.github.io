@@ -229,7 +229,7 @@ form.bk{padding:24px 28px 30px}
 .fq{margin-bottom:22px}
 .fq>label,.fq>.ql{display:block;font-weight:800;color:var(--indigo);margin-bottom:8px}
 .fq small{display:block;color:var(--muted);font-weight:600;margin:-4px 0 8px}
-.fq input[type=text],.fq input[type=tel],.fq textarea{width:100%;font:600 1rem 'Nunito';padding:13px 16px;border-radius:14px;border:2px solid #E4DFF2;background:#fff;outline:none;transition:border .2s, box-shadow .2s}
+.fq input[type=text],.fq input[type=tel],.fq input[type=email],.fq textarea{width:100%;font:600 1rem 'Nunito';padding:13px 16px;border-radius:14px;border:2px solid #E4DFF2;background:#fff;outline:none;transition:border .2s, box-shadow .2s}
 .fq input:focus,.fq textarea:focus{border-color:var(--peacock);box-shadow:0 0 0 4px rgba(15,163,177,.18)}
 .ages{display:flex;flex-wrap:wrap;gap:8px}
 .ages label,.opts label{cursor:pointer}
@@ -465,6 +465,7 @@ form.bk .btn[disabled]{opacity:.7;pointer-events:none}
     <form class="bk" id="bk" novalidate>
       <div class="fq" data-q="name"><label for="fName">What's your name? *</label><input type="text" id="fName" autocomplete="name"></div>
       <div class="fq" data-q="wa"><label for="fWa">Your WhatsApp number *</label><small>I'll send the call link and one reminder here, nothing else.</small><input type="tel" id="fWa" autocomplete="tel" inputmode="tel" placeholder="98XXXXXXXX"></div>
+      <div class="fq" data-q="email"><label for="fEmail">Your email *</label><small>Your thank-you note and the call details come here.</small><input type="email" id="fEmail" autocomplete="email" inputmode="email" placeholder="you@gmail.com"></div>
       <div class="fq" data-q="age"><div class="ql">How old is your child? *</div><div class="ages"><label><input type="radio" name="age" value="7"><span>7</span></label><label><input type="radio" name="age" value="8"><span>8</span></label><label><input type="radio" name="age" value="9"><span>9</span></label><label><input type="radio" name="age" value="10"><span>10</span></label><label><input type="radio" name="age" value="11"><span>11</span></label><label><input type="radio" name="age" value="12"><span>12</span></label><label><input type="radio" name="age" value="13"><span>13</span></label><label><input type="radio" name="age" value="14"><span>14</span></label><label><input type="radio" name="age" value="15"><span>15</span></label><label><input type="radio" name="age" value="16"><span>16</span></label></div></div>
       <div class="fq" data-q="struggle"><div class="ql">What's the biggest struggle at home right now? *</div><small>Pick the one.</small><div class="opts"><label><input type="radio" name="struggle" value="Cannot sit for ten minutes without asking for a screen break"><span>Cannot sit for ten minutes without asking for a screen break</span></label><label><input type="radio" name="struggle" value="Forgets what they studied last night and blanks out in tests"><span>Forgets what they studied last night and blanks out in tests</span></label><label><input type="radio" name="struggle" value="Gets angry or throws a tantrum the moment the phone is taken away"><span>Gets angry or throws a tantrum the moment the phone is taken away</span></label><label><input type="radio" name="struggle" value="Too shy to speak up in class or join group activities"><span>Too shy to speak up in class or join group activities</span></label><label><input type="radio" name="struggle" value="Gives up or turns tearful when a sum or a puzzle gets hard"><span>Gives up or turns tearful when a sum or a puzzle gets hard</span></label><label><input type="radio" name="struggle" value="Does the bare minimum, no interest in learning"><span>Does the bare minimum, no interest in learning</span></label><label><input type="radio" name="struggle" value="Slouching, tired, low energy even on weekends"><span>Slouching, tired, low energy even on weekends</span></label><label><input type="radio" name="struggle" value="__other_option__"><span>Other</span></label><input type="text" id="otherText" placeholder="Type it in a few words"></div></div>
       <div class="fq" data-q="change"><label for="fChange">What would you love to see change in the next 7 days? *</label><textarea id="fChange" rows="2" placeholder="One line is enough"></textarea></div>
@@ -484,6 +485,7 @@ const PHOTO_URL = "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBA
 const FORM_ID = "1FAIpQLSdPlYQ0zKt9jbjZwZxymBidikwWefm3A0mlx2V2UXl4Mtll2Q";
 const THANK_YOU_PAGE = "thankyou.html";   // change to the full link once the thank-you page is live
 const ENTRY = {
+  email:"emailAddress",   // filled when the form has "Collect email addresses" on
   name:"entry.617166100", wa:"entry.676457634", age:"entry.1606234600",
   struggle:"entry.1658185442", invest:"entry.1178534517", time:"entry.966599860",
   change:""   // ← the ID for "What would you love to see change…" is still needed
@@ -553,6 +555,7 @@ function answers(){
   return {
     name: document.getElementById('fName').value.trim(),
     wa: document.getElementById('fWa').value.trim(),
+    email: document.getElementById('fEmail').value.trim(),
     age: val('age'), struggle: val('struggle'),
     change: document.getElementById('fChange').value.trim(),
     invest: val('invest'), time: val('time')
@@ -560,7 +563,7 @@ function answers(){
 }
 function progress(){
   const a = answers(); const done = Object.keys(a).filter(k => a[k]).length;
-  mbar.style.width = (done / 7 * 100) + '%';
+  mbar.style.width = (done / 8 * 100) + '%';
 }
 
 bk.addEventListener('submit', async e => {
@@ -569,7 +572,7 @@ bk.addEventListener('submit', async e => {
   if (a.struggle === '__other_option__' && !other.value.trim()) a.struggle = '';
   let bad = false;
   bk.querySelectorAll('.fq').forEach(q => {
-    const miss = !a[q.dataset.q] || (q.dataset.q === 'wa' && a.wa.replace(/\D/g,'').length < 10);
+    const miss = !a[q.dataset.q] || (q.dataset.q === 'wa' && a.wa.replace(/\D/g,'').length < 10) || (q.dataset.q === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(a.email));
     q.classList.toggle('bad', miss); if (miss) bad = true;
   });
   document.getElementById('ferr').style.display = bad ? 'block' : 'none';
