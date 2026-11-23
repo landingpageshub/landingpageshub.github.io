@@ -61,7 +61,9 @@
       .replace(/chh|cch/g, 'c').replace(/ch/g, 'c').replace(/sh/g, 's')
       .replace(/kh/g, 'k').replace(/gh/g, 'g').replace(/jh/g, 'j').replace(/th/g, 't').replace(/dh/g, 'd').replace(/ph/g, 'p').replace(/bh/g, 'b')
       .replace(/jny|jn|gy(?=[aeiou])|dny/g, 'jn')
-      .replace(/ri(?=[aeiou])/g, 'r');
+      .replace(/ng(?=[kg])/g, 'n')
+      .replace(/ri(?=[aeiou])/g, 'r')
+      .replace(/(.)\1+/g, '$1');
     // visarga / weak h: drop h after a vowel when not followed by a vowel
     let t = '';
     for (let i = 0; i < s.length; i++) {
@@ -80,29 +82,53 @@
     const chars = []; // {ch, pada, word, optional}
     const words = [];
     if (verse.spk) for (const ch of toKey(verse.spk)) chars.push({ ch, pada: -1, word: -1, optional: true });
-    verse.padas.forEach((p, pi) => {
-      p.split(/\s+/).filter(Boolean).forEach(w => {
-        const k = toKey(w); if (!k) return;
-        const wi = words.length; words.push({ text: w, pada: pi, key: k, start: chars.length });
-        for (const ch of k) chars.push({ ch, pada: pi, word: wi, optional: false });
-        words[wi].end = chars.length;
+    const pushWord = (text, pieces) => {
+      const k = toKey(text); if (!k) return;
+      const wi = words.length, total = pieces.reduce((a, p) => a + p.len, 0) || 1;
+      words.push({ text, pada: pieces[0].pada, key: k, start: chars.length });
+      let acc = 0, pi = 0;
+      for (let i = 0; i < k.length; i++) {
+        while (pi < pieces.length - 1 && (i + 0.5) / k.length > (acc + pieces[pi].len) / total) { acc += pieces[pi].len; pi++; }
+        chars.push({ ch: k[i], pada: pieces[pi].pada, word: wi, optional: false });
+      }
+      words[wi].end = chars.length;
+    };
+    if (verse.pl && verse.lines) {
+      let pi = 0;
+      verse.lines.forEach((line, li) => {
+        const toks = [];
+        while (pi < verse.padas.length && verse.pl[pi] === li) { verse.padas[pi].split(/\s+/).filter(Boolean).forEach(t => toks.push({ pada: pi, len: t.length })); pi++; }
+        let ti = 0;
+        line.split(/\s+/).filter(Boolean).forEach(w => {
+          const pieces = []; let rem = w.length;
+          while (rem > 0 && ti < toks.length) { pieces.push(toks[ti]); rem -= toks[ti].len; ti++; }
+          if (!pieces.length) pieces.push({ pada: Math.max(0, pi - 1), len: w.length });
+          pushWord(w, pieces);
+        });
       });
-    });
+    } else {
+      verse.padas.forEach((p, pi) => p.split(/\s+/).filter(Boolean).forEach(w => pushWord(w, [{ pada: pi, len: w.length }])));
+    }
     return { chars, words, padaCount: verse.padas.length };
   }
-  const SIM = ['ie', 'uo', 'vb', 'nm', 'td', 'kg', 'pb', 'sc', 'yi', 'vu', 'ln', 'rl'];
+  const SIM = ['ie', 'uo', 'vb', 'nm', 'td', 'kg', 'pb', 'sc', 'yi', 'vu', 'ln', 'rl', 'iu', 'ae', 'ao'];
+  const NAS = 'mn';
+  // cost of an extra/missing letter: cheap for the inherent 'a', weak sounds, doubled letters and nasal clusters
+  const indel = (ch, prev, next) => (ch === prev || ch === next) ? 0.3 : (NAS.includes(ch) && (NAS.includes(prev || '') || NAS.includes(next || ''))) ? 0.3
+    : ch === 'a' ? 0.4 : (ch === 'i' || ch === 'u' || ch === 'y' || ch === 'h') ? 0.7 : 1;
   const subCost = (a, b) => a === b ? 0 : (SIM.some(p => (p[0] === a && p[1] === b) || (p[0] === b && p[1] === a)) ? 0.5 : 1);
   function align(ref, inp) {
     const n = ref.length, m = inp.length, EDGE_INS = 0.4;
+    const rdel = ref.map((c, k) => indel(c.ch, ref[k - 1] && ref[k - 1].ch, ref[k + 1] && ref[k + 1].ch));
     const D = Array.from({ length: n + 1 }, () => new Float64Array(m + 1));
     const B = Array.from({ length: n + 1 }, () => new Uint8Array(m + 1)); // 1 diag,2 del(ref),3 ins(inp)
     for (let j = 1; j <= m; j++) { D[0][j] = D[0][j - 1] + EDGE_INS; B[0][j] = 3; }
     for (let i = 1; i <= n; i++) {
-      D[i][0] = D[i - 1][0] + (ref[i - 1].optional ? 0 : 1); B[i][0] = 2;
+      D[i][0] = D[i - 1][0] + (ref[i - 1].optional ? 0 : rdel[i - 1]); B[i][0] = 2;
       for (let j = 1; j <= m; j++) {
-        const ins = (i === n ? EDGE_INS : 1);
+        const ins = (i === n ? EDGE_INS : indel(inp[j - 1], inp[j - 2], inp[j]));
         let best = D[i - 1][j - 1] + subCost(ref[i - 1].ch, inp[j - 1]), b = 1;
-        const del = D[i - 1][j] + (ref[i - 1].optional ? 0 : 1); if (del < best) { best = del; b = 2; }
+        const del = D[i - 1][j] + (ref[i - 1].optional ? 0 : rdel[i - 1]); if (del < best) { best = del; b = 2; }
         const insC = D[i][j - 1] + ins; if (insC < best) { best = insC; b = 3; }
         D[i][j] = best; B[i][j] = b;
       }
@@ -121,7 +147,16 @@
   const ORD = ['first', 'second', 'third', 'fourth', 'fifth', 'sixth', 'seventh', 'eighth'];
   /** Compare an answer with a verse.
    *  opts: { inputType: 'voice'|'text', asrConfidence: 0..1 } */
+  // Typed visarga echo (tataha, harihi, guruhu): try the answer both ways and keep the kinder fair reading.
   function compare(verse, answer, opts = {}) {
+    const a = compareOnce(verse, answer, opts);
+    if (a.pass || isDev(answer || '')) return a;
+    const alt = (answer || '').replace(/([aiuAIU])h\1(?=[^a-zA-Z\u0100-\u017F\u1E00-\u1EFF]|$)/g, '$1h');
+    if (alt === answer) return a;
+    const b = compareOnce(verse, alt, opts);
+    return b.score > a.score ? b : a;
+  }
+  function compareOnce(verse, answer, opts = {}) {
     const voice = opts.inputType === 'voice';
     const R = buildReference(verse);
     const inp = toKey(answer);
@@ -129,18 +164,23 @@
     const base = { inputKey: inp, refLength: req };
     if (inp.length < 3) return Object.assign(base, { pass: false, uncertain: true, reason: voice ? 'no-speech' : 'empty', score: 0, padas: [], words: [], extras: [] });
     const { ops, insAt, insText } = align(R.chars, inp);
-    const wErr = (o) => o === 's' || o === 'd' ? 1 : o === 'n' ? 0.5 : 0;
+    const insW = insText.map(t => [...t].reduce((a, ch, i, arr) => a + indel(ch, arr[i - 1], arr[i + 1]), 0));
+    const rd = R.chars.map((c, k) => indel(c.ch, R.chars[k - 1] && R.chars[k - 1].ch, R.chars[k + 1] && R.chars[k + 1].ch));
+    const wErr = (o, k) => o === 's' ? 1 : o === 'd' ? rd[k] : o === 'n' ? 0.5 : 0;
     const padas = Array.from({ length: R.padaCount }, (_, k) => ({ idx: k, err: 0, len: 0 }));
     let total = 0;
-    R.chars.forEach((c, k) => { if (c.optional) return; const e = wErr(ops[k]) + (k > 0 && k < R.chars.length ? Math.min(insAt[k], 6) : 0); padas[c.pada].err += e; padas[c.pada].len++; total += e; });
+    R.chars.forEach((c, k) => { if (c.optional) return; const e = wErr(ops[k], k) + (k > 0 && k < R.chars.length ? Math.min(insW[k], 6) : 0); padas[c.pada].err += e; padas[c.pada].len++; total += e; });
     const extras = [];
     for (let k = 0; k <= R.chars.length; k++) if (insAt[k] >= 4) extras.push({ afterWord: k > 0 ? R.chars[k - 1].word : -1, text: insText[k] });
-    const tolWord = voice ? 0.45 : 0.3;
+    const tolWord = voice ? 0.45 : 0.25;
     const words = R.words.map((w, wi) => {
-      let e = 0, d = 0; for (let k = w.start; k < w.end; k++) { e += wErr(ops[k]); if (ops[k] === 'd') d++; }
-      for (let k = w.start + 1; k < w.end; k++) e += insAt[k];
+      let e = 0, d = 0; for (let k = w.start; k < w.end; k++) { e += wErr(ops[k], k); if (ops[k] === 'd') d++; }
+      for (let k = w.start + 1; k < w.end; k++) e += insW[k];
       const len = w.end - w.start, ratio = e / len;
-      const status = d >= Math.max(2, 0.7 * len) ? 'missing' : ratio > tolWord ? 'wrong' : 'ok';
+      // local cluster check: a wrong syllable inside a long sandhi-joined word must not hide
+      const per = []; for (let k = w.start; k < w.end; k++) per.push(wErr(ops[k], k) + (k > w.start ? insW[k] : 0));
+      let worst = 0; const WIN = 6; for (let a = 0; a < per.length; a++) { let sum = 0; for (let b = a; b < Math.min(per.length, a + WIN); b++) sum += per[b]; worst = Math.max(worst, sum); }
+      const status = d >= Math.max(2, 0.7 * len) ? 'missing' : (ratio > tolWord || worst >= (voice ? 3 : 1.8)) ? 'wrong' : 'ok';
       return { index: wi, pada: w.pada, text: w.text, status, ratio: +ratio.toFixed(2) };
     });
     padas.forEach(p => { p.score = p.len ? Math.max(0, 1 - p.err / p.len) : 1; p.wrongWords = words.filter(w => w.pada === p.idx && w.status !== 'ok').length; p.ok = p.wrongWords === 0 && p.score >= (voice ? 0.55 : 0.7); });
@@ -163,17 +203,18 @@
       ? "I couldn't hear you clearly. Please chant again – no attempt used. 😊"
       : "I'm not fully sure I heard that correctly. Please chant once more, a little slowly – this does not count as an attempt. 🙏";
     const bad = result.padas.filter(p => !p.ok).map(p => p.idx);
+    if (result.score < 0.55) return attemptNo >= 3 ? "Last try, champion! Take a breath and chant this shloka slowly from the beginning. 🌟" : "Hmm, that sounds like a different shloka! Let's think again about this one and try once more. 💪";
     const firstBad = result.words.find(w => w.status !== 'ok');
     if (attemptNo === 1) {
-      if (!bad.length && result.extras.length) return 'Please check again. It seems some extra words came in. Try once more.';
-      return `Please check again. There seems to be a mistake in ${listPadas(bad.length ? bad : [0])}. Try once more.`;
+      if (!bad.length && result.extras.length) return 'Almost there! A few extra words slipped in. Try again.';
+      return `Almost there! Please check ${listPadas(bad.length ? bad : [0])}. Try again.`;
     }
     if (attemptNo === 2 && firstBad) {
       const inPada = result.words.filter(w => w.pada === firstBad.pada);
       const pos = inPada.indexOf(firstBad);
-      const start = firstSyllable(firstBad.text);
-      if (firstBad.status === 'missing') return `Good try! In the ${ordinal(firstBad.pada)} pada, a word seems to be missing – the ${ordinal(pos)} word. It begins with "${start}…".`;
-      return `Nearly there! In the ${ordinal(firstBad.pada)} pada, look at the ${ordinal(pos)} word. It begins with "${start}…".`;
+      const fs = firstSyllable(firstBad.text), start = fs + '…" (' + iastToEasy(devToIast(fs)).replace(/a$/, '') + '…';
+      if (firstBad.status === 'missing') return `Good try! In the ${ordinal(firstBad.pada)} pada, a word seems to be missing – the ${ordinal(pos)} word. It begins with "${start}).`;
+      return `Nearly there! In the ${ordinal(firstBad.pada)} pada, look at the ${ordinal(pos)} word. It begins with "${start}).`;
     }
     const p = bad.length ? bad[0] : 0;
     const count = result.words.filter(w => w.pada === p).length;
