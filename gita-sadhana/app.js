@@ -267,13 +267,16 @@ const Voice = {
   },
   listen({ lang, onText, onStart, onFatal }) {
     const rec = new SR(); rec.lang = lang; rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 1;
-    let finals = [], confs = [], interim = '', stopped = false, started = false, fatal = null, restarts = 0, resolveFn = null;
-    const text = () => (finals.join(' ') + ' ' + interim).replace(/\s+/g, ' ').trim();
+    let committed = '', sessionText = '', confs = [], stopped = false, started = false, fatal = null, restarts = 0, resolveFn = null;
+    // Android Chrome repeats growing phrases ("अर्जुन", "अर्जुन वचन", …). Keep only the longest version of each phrase.
+    const collapse = arr => { const out = []; for (const t0 of arr) { const t = String(t0 || '').replace(/\s+/g, ' ').trim(); if (!t) continue; const last = out[out.length - 1]; if (last !== undefined && t.startsWith(last)) out[out.length - 1] = t; else if (last !== undefined && last.startsWith(t)) continue; else out.push(t); } return out.join(' '); };
+    const text = () => (committed + ' ' + sessionText).replace(/\s+/g, ' ').trim();
     const fail = err => { if (fatal || stopped) return; fatal = err; stopped = true; try { rec.abort(); } catch (e) {} onFatal && onFatal(err); };
     rec.onstart = () => { if (!started) { started = true; onStart && onStart(); } };
     rec.onresult = e => {
-      interim = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) { const r = e.results[i]; if (r.isFinal) { finals.push(r[0].transcript); if (r[0].confidence > 0) confs.push(r[0].confidence); } else interim += r[0].transcript; }
+      const parts = [];
+      for (let i = 0; i < e.results.length; i++) { const r = e.results[i]; parts.push(r[0].transcript); if (r.isFinal && i >= e.resultIndex && r[0].confidence > 0) confs.push(r[0].confidence); }
+      sessionText = collapse(parts);
       onText && onText(text());
     };
     rec.onerror = e => {
@@ -281,6 +284,7 @@ const Voice = {
       if (m) fail(m);
     };
     rec.onend = () => {
+      if (sessionText) { committed = collapse([committed, sessionText]); sessionText = ''; }
       if (!stopped && restarts < 30) { restarts++; try { rec.start(); return; } catch (e) { /* fall through */ } }
       if (resolveFn) resolveFn();
     };

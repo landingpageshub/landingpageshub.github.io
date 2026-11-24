@@ -112,7 +112,7 @@ nav.bottom a.on{color:#B35E0E;background:var(--saffron-soft)}
 .mic.live{background:radial-gradient(circle at 40% 35%,#57B26B,#2F7A3F);animation:pulse 1.4s infinite}
 @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(47,122,63,.45)}70%{box-shadow:0 0 0 22px rgba(47,122,63,0)}100%{box-shadow:0 0 0 0 rgba(47,122,63,0)}}
 @media (prefers-reduced-motion:reduce){.mic.live{animation:none}*{transition:none!important}}
-.heard{background:#fff;border:2px dashed var(--line);border-radius:14px;padding:10px 12px;min-height:54px}
+.heard{max-height:160px;overflow-y:auto;background:#fff;border:2px dashed var(--line);border-radius:14px;padding:10px 12px;min-height:54px}
 .w-ok{}.w-wrong{background:#FFD7CF;border-radius:6px;padding:0 3px;text-decoration:underline wavy #B5473A}.w-missing{background:#FFE9A8;border-radius:6px;padding:0 3px;outline:2px dashed #C9962B}
 .pada-bad{background:#FFDCD3;box-shadow:0 0 0 3px #FFDCD3;border-radius:6px}
 .modal-bg{position:fixed;inset:0;background:rgba(58,39,22,.45);z-index:50;display:flex;align-items:flex-end;justify-content:center}
@@ -150,8 +150,8 @@ details summary{cursor:pointer;font-weight:800;padding:6px 0}
 <div id="app" class="wrap"><div class="center" style="padding-top:30vh"><p class="muted">Loading Gita Sadhana…</p></div></div>
 <nav class="bottom hide" id="nav"></nav>
 <script src="vendor/supabase.js"></script>
-<script src="config.js?v=3"></script>
-<script src="engine.js?v=3"></script>
-<script src="app.js?v=3"></script>
+<script src="config.js?v=4"></script>
+<script src="engine.js?v=4"></script>
+<script src="app.js?v=4"></script>
 </body>
 </html>

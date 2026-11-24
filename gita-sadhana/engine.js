@@ -203,6 +203,14 @@
       ? "I couldn't hear you clearly. Please chant again – no attempt used. 😊"
       : "I'm not fully sure I heard that correctly. Please chant once more, a little slowly – this does not count as an attempt. 🙏";
     const bad = result.padas.filter(p => !p.ok).map(p => p.idx);
+    const okIdx = result.padas.filter(p => p.ok).map(p => p.idx);
+    const tailWords = result.words.filter(w => bad.includes(w.pada));
+    const tailMissing = tailWords.length > 0 && tailWords.filter(w => w.status === 'missing').length / tailWords.length >= 0.6;
+    const shortAnswer = result.inputKey && result.refLength && result.inputKey.length < 0.75 * result.refLength;
+    if (bad.length && result.padas[0] && result.padas[0].ok && (shortAnswer || (tailMissing && Math.min(...bad) > Math.max(...okIdx)))) {
+      const from = Math.min(...bad);
+      return attemptNo >= 3 ? `Last try, champion! You know the beginning well – keep going right to the end this time. 🌟` : `Great start! It looks like you stopped early – please chant the full shloka, right to the end. The ${ordinal(from)} pada is next. 💪`;
+    }
     if (result.score < 0.55) return attemptNo >= 3 ? "Last try, champion! Take a breath and chant this shloka slowly from the beginning. 🌟" : "Hmm, that sounds like a different shloka! Let's think again about this one and try once more. 💪";
     const firstBad = result.words.find(w => w.status !== 'ok');
     if (attemptNo === 1) {
