@@ -68,6 +68,14 @@ class SupaStore {
     if (r.error) { const r2 = await this.sb.auth.verifyOtp({ email, token, type: 'signup' }).catch(() => null); if (r2 && !r2.error) r = r2; }
     if (r.error) throw r.error; return r.data.user;
   }
+  async quickLogin(email, name) {
+    const { data, error } = await this.sb.functions.invoke('quick-login', { body: { email, name } });
+    if (error) { let msg = error.message; try { const j = await error.context.json(); msg = j.error || msg; } catch (e) {} throw new Error(msg); }
+    if (!data || !data.token_hash) throw new Error((data && data.error) || 'Could not sign in.');
+    let r = await this.sb.auth.verifyOtp({ token_hash: data.token_hash, type: 'magiclink' });
+    if (r.error) r = await this.sb.auth.verifyOtp({ token_hash: data.token_hash, type: 'email' });
+    if (r.error) throw r.error; return r.data.user;
+  }
   async signOut() { await this.sb.auth.signOut(); }
   async _t(p) { try { const { data, error } = await p; if (error) throw error; setCloud(true); return data; } catch (e) { setCloud(false, e); throw e; } }
   async list(table, match = {}, order) {
@@ -97,7 +105,7 @@ class LocalStore {
   _get(t) { try { return JSON.parse(localStorage.getItem(this.ns + t) || '[]'); } catch (e) { return []; } }
   _set(t, rows) { localStorage.setItem(this.ns + t, JSON.stringify(rows)); }
   async user() { return localStorage.getItem(this.ns + 'on') ? this.u : null; }
-  async sendOtp(email, name) { this.pending = { email, name }; }
+  async quickLogin(email, name) { localStorage.setItem(this.ns + 'on', '1'); return this.u; }
   async verifyOtp(email, token) { if (token !== '123456') throw new Error('Token has expired or is invalid'); localStorage.setItem(this.ns + 'on', '1'); return this.u; }
   async signOut() { localStorage.removeItem(this.ns + 'on'); }
   async ping() { setCloud(true); }
@@ -424,28 +432,20 @@ function viewConfirm() {
    <div class="row"><button class="btn ghost grow" data-a="confirmNo">Cancel</button><button class="btn ${c.danger ? 'danger' : 'green'} grow" data-a="confirmYes">${esc(c.okLabel)}</button></div></div></div>`;
 }
 
-// ---------------- AUTH (name + email + code) ----------------
+// ---------------- AUTH (single learner: name + email, straight in) ----------------
 function viewAuth() {
-  const step = S.ui.otpEmail ? 'code' : 'email';
   return `<div style="max-width:440px;margin:0 auto">
   <div class="card hero center" style="padding-top:26px">${FEATHER}${LOTUS}<h1 style="margin-top:6px">Gita Sadhana</h1><p class="muted">One shloka at a time, one chapter at a time, every day. Hare Krishna! 🙏</p></div>
-  <div class="card">
-   ${step === 'email' ? `<h2>Welcome, champion!</h2><p class="small muted">No password needed. I'll email you a code.</p>
-   <form data-f="otpSend">
-    <label for="an">Your name</label><input id="an" name="name" autocomplete="given-name" maxlength="40" placeholder="e.g. Radha" value="${esc(S.ui.pendingName || '')}">
+  <div class="card"><h2>Welcome, champion!</h2>
+   <form data-f="quickLogin">
+    <label for="an">Your name</label><input id="an" name="name" autocomplete="given-name" maxlength="40" required placeholder="e.g. Radha" value="${esc(S.ui.pendingName || '')}">
     <label for="ae">Email</label><input id="ae" name="email" type="email" autocomplete="email" required placeholder="you@example.com" value="${esc(S.ui.lastEmail || '')}">
-    <div class="sp"></div><button class="btn big" type="submit" ${S.ui.authBusy ? 'disabled' : ''}>${S.ui.authBusy ? '<span class="spin"></span> Sending…' : 'Send my code ✉️'}</button>
-   </form>` : `<h2>Check your email ✉️</h2><p class="small">I sent a code to <b>${esc(S.ui.otpEmail)}</b>. Type it below – or just tap the link in that email.</p>
-   <form data-f="otpVerify">
-    <label for="ac">Code from the email</label><input id="ac" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6,10}" maxlength="10" required placeholder="123456" style="font-size:24px;letter-spacing:6px;text-align:center">
-    <div class="sp"></div><button class="btn big" type="submit" ${S.ui.authBusy ? 'disabled' : ''}>${S.ui.authBusy ? '<span class="spin"></span> Checking…' : 'Enter Gita Sadhana 🪷'}</button>
+    <div class="sp"></div><button class="btn big" type="submit" ${S.ui.authBusy ? 'disabled' : ''}>${S.ui.authBusy ? '<span class="spin"></span> Opening…' : 'Start my Sadhana 🪷'}</button>
    </form>
-   <div class="row" style="margin-top:10px;justify-content:space-between"><button class="linkbtn small" style="width:auto;text-decoration:underline" data-a="otpBack">Use a different email</button>
-    <button class="linkbtn small" style="width:auto;text-decoration:underline" data-a="otpResend">Send a new code</button></div>`}
    ${S.ui.authMsg ? `<div class="banner ${S.ui.authErr ? 'warn' : 'ok'}" style="margin-top:12px" role="alert">${esc(S.ui.authMsg)}</div>` : ''}
    ${!cloudReady ? '<div class="banner warn">The cloud is not configured – progress cannot be saved.</div>' : ''}
   </div>
-  <p class="center small muted">Your progress is saved privately in the cloud and stays signed in on this device.</p></div>`;
+  <p class="center small muted">Use the same email every time. You'll stay signed in on this device, and your progress is saved in the cloud.</p></div>`;
 }
 
 // ---------------- HOME ----------------
@@ -1042,24 +1042,11 @@ async function saveProgressRow(c, v, patch) {
   delete base.id; delete base.created_at;
   const r = await store.upsert('gs_shloka_progress', base, 'user_id,chapter,verse'); S.progress.set(k, r || base);
 }
-async function sendCode(email, name) {
-  S.ui.authBusy = true; S.ui.authMsg = ''; S.ui.authErr = false; render();
-  try {
-    await store.sendOtp(email, name);
-    S.ui.otpEmail = email; S.ui.lastEmail = email; S.ui.pendingName = name; S.ui.authMsg = store.kind === 'local' ? 'Test mode: use code 123456.' : 'Code sent! It can take a minute – check Spam too.';
-  } catch (e) {
-    S.ui.authErr = true;
-    S.ui.authMsg = /rate limit|too many|seconds/i.test(e.message) ? 'Too many codes were requested. Please wait a few minutes, then try again. 🙏' : /invalid.*email|email address/i.test(e.message) ? 'Please check the email address.' : 'Could not send the code: ' + friendlyErr(e);
-  } finally { S.ui.authBusy = false; render(); }
-}
-
 const ACT = {
   go: el => go(el.dataset.t || 'tools'),
   goHome: () => go('home'),
   tool: el => go('tools', el.dataset.t),
   syncRetry: async () => { S.ui.syncWarned = false; await Sync.flush(); if (!Sync.q.length) { try { await store.ping(); } catch (e) {} } rerender(); toast(Sync.q.length ? '⚠️ Still not saved – check your internet.' : '☁️ Everything is saved.'); },
-  otpBack: () => { S.ui.otpEmail = ''; S.ui.authMsg = ''; render(); },
-  otpResend: () => sendCode(S.ui.otpEmail, S.ui.pendingName || ''),
   setMode: el => { S.ui.mode = el.dataset.m; rerender(); },
   setInput: async el => { S.ui.input = el.dataset.m; rerender(); if (el.dataset.m === 'voice' && Voice.canListen) { const st = await Voice.micState(); if (st !== 'unknown') { S.voice.mic = st; rerender(); } } },
   micCheck: () => ensureMic(),
@@ -1121,7 +1108,7 @@ const ACT = {
   playRec: async el => { const r = S.recordings.find(x => x.id === el.dataset.id); try { const url = await store.fileUrl(r.storage_path); new Audio(url).play(); } catch (e) { toast('Could not play: ' + friendlyErr(e)); } },
   delRec: el => confirmBox('Delete this recording?', 'Are you sure? This action cannot be undone.', 'Delete', async () => { const r = S.recordings.find(x => x.id === el.dataset.id); await store.removeFiles([r.storage_path]).catch(() => {}); await store.remove('gs_recordings', { id: r.id }); S.recordings = S.recordings.filter(x => x.id !== r.id); toast('Recording deleted'); }),
   delAllRec: () => confirmBox('Delete all recordings?', 'Are you sure you want to delete all your voice recordings? This action cannot be undone.', 'Delete all', async () => { await store.removeFiles(S.recordings.map(r => r.storage_path)).catch(() => {}); await store.remove('gs_recordings', { user_id: S.user.id }); S.recordings = []; toast('All recordings deleted'); }),
-  signOut: () => confirmBox('Sign out?', 'You can sign in again any time with your email code. Your progress stays safe in the cloud.', 'Sign out', async () => { if (Sync.q.length) await Sync.drain(); await store.signOut(); S.user = null; S.ui = {}; }, false),
+  signOut: () => confirmBox('Sign out?', 'You can sign in again any time with your name and email. Your progress stays safe in the cloud.', 'Sign out', async () => { if (Sync.q.length) await Sync.drain(); await store.signOut(); S.user = null; S.ui = {}; }, false),
   delAcc: () => confirmBox('Delete your whole account?', 'This permanently deletes your account, all progress, goals, landmarks and recordings. This action cannot be undone.', 'Delete my account', async () => { await store.deleteAccount(); S.user = null; S.ui = { authMsg: 'Your account and all data have been deleted.' }; })
 };
 const CHANGE = {
@@ -1134,12 +1121,12 @@ const CHANGE = {
   goalDone: async el => { const g = S.goals.find(x => x.id === el.dataset.id); if (!g) return; try { await store.update('gs_goals', { id: g.id }, { done: el.checked, updated_at: new Date().toISOString() }); g.done = el.checked; if (el.checked) toast('Goal achieved! 🎉 Hare Krishna!'); } catch (e) { el.checked = !el.checked; toast('Could not save: ' + friendlyErr(e)); } rerender(); }
 };
 const FORMS = {
-  otpSend: f => { const d = Object.fromEntries(new FormData(f)); const email = String(d.email || '').trim().toLowerCase(); if (!email) return; S.ui.pendingName = String(d.name || '').trim(); sendCode(email, S.ui.pendingName); },
-  otpVerify: async f => {
-    const code = String(new FormData(f).get('code') || '').replace(/\D/g, ''); if (code.length < 6) { S.ui.authErr = true; S.ui.authMsg = 'Please enter the code from the email.'; return render(); }
-    S.ui.authBusy = true; S.ui.authMsg = ''; render();
-    try { await store.verifyOtp(S.ui.otpEmail, code); S.ui.otpEmail = ''; await boot(); }
-    catch (e) { S.ui.authErr = true; S.ui.authMsg = /expired|invalid/i.test(e.message) ? "That code didn't work or has expired. Please check the newest email, or send a new code." : 'Could not sign in: ' + friendlyErr(e); }
+  quickLogin: async f => {
+    const d = Object.fromEntries(new FormData(f)), email = String(d.email || '').trim().toLowerCase(), name = String(d.name || '').trim();
+    if (!email) return;
+    S.ui.authBusy = true; S.ui.authErr = false; S.ui.authMsg = ''; S.ui.pendingName = name; S.ui.lastEmail = email; render();
+    try { await store.quickLogin(email, name); await boot(); }
+    catch (e) { S.ui.authErr = true; S.ui.authMsg = friendlyErr(e); }
     finally { S.ui.authBusy = false; if (!S.user) render(); }
   },
   goal: async f => { const g = Math.max(1, Math.min(100, +new FormData(f).get('goal') || 5)); await store.update('gs_profiles', { id: S.user.id }, { daily_goal: g }); S.profile.daily_goal = g; toast('Daily goal saved 🎯'); rerender(); },
