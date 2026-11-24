@@ -912,7 +912,11 @@ async function doExplore() {
     const rows = await store.list('gs_meanings', { chapter: +M.c, verse: +M.v });
     if (rows[0]) M.res = rows[0];
     else { const data = await store.invoke(CFG.explainFunction || 'explain-shloka', { chapter: +M.c, verse: +M.v }); M.res = data; }
-  } catch (e) { M.res = { error: /not configured|ANTHROPIC|Failed to send|404|not found/i.test(e.message) ? 'Kids\' explanations for this shloka are not ready yet. Chapter 12 is ready now – more chapters are coming soon! 🪷' : 'Could not load the explanation: ' + friendlyErr(e) }; }
+  } catch (e) {
+    let ready = '';
+    try { if (store.sb) { const { data } = await store.sb.from('gs_meanings').select('chapter'); const chs = [...new Set((data || []).map(r => r.chapter))].sort((a, b) => a - b); if (chs.length) ready = ` Ready now: Chapter${chs.length > 1 ? 's' : ''} ${chs.join(', ')}.`; } } catch (e2) {}
+    M.res = { error: /not configured|ANTHROPIC|Failed to send|404|not found/i.test(e.message) ? `Kids' explanations for Chapter ${M.c} are not ready yet.${ready} More chapters are coming soon! 🪷` : 'Could not load the explanation: ' + friendlyErr(e) };
+  }
   M.loading = false; rerender();
 }
 function viewCheck() {
